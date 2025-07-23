@@ -1,6 +1,8 @@
 
 from ast import expr_context
 from datetime import datetime, timezone, timedelta
+from hashlib import sha256
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.db.models import UserModel
 from app.schemas import User
@@ -12,7 +14,7 @@ from jose import jwt, JWTError
 from decouple import config
 
 
-crypt_context = CryptContext(schemes = ['sha256_crypt'])
+crypt_context = CryptContext(["sha256_crypt"],sha256_crypt__default_rounds=77123)
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
 
@@ -22,6 +24,7 @@ class UserUseCases:
 
 
     def user_register(self,user: User):
+
         user_model = UserModel(
             username= user.username,
             password =crypt_context.hash(user.password)
@@ -34,18 +37,18 @@ class UserUseCases:
         
     def user_login(self,user:User, expires_in: int = 30):
         user_on_db = self.db_session.query(UserModel).filter_by(username=user.username).first() #posso usar o scalar aqui tbm
+        # user_on_db = self.db_session.scalar(select(UserModel).where(UserModel.username == user.username))
         if user_on_db is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,detail='Invalid username or password'
             )
-        
-        if crypt_context.verify(user.password,user_on_db.password):
+
+        if not crypt_context.verify(user.password,user_on_db.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,detail='Invalid username or password'
             )
         exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
-        print(datetime.now(timezone.utc))
-        print(exp)
+        # O próprio JWT já entende o exp e analisa ele ao validar o access token. 
         payload = {
             'sub': user.username,
             "exp": exp,
